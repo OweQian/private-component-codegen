@@ -62,7 +62,7 @@ AI_KEY=sk-xxx
 # 大模型 API Base URL
 AI_BASE_URL=https://api
 # 大模型
-MODEL=gpt-4o
+MODEL=claude-3-5-sonnet-latest
 ```
 
 ### 启动项目
