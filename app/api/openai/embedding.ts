@@ -1,5 +1,9 @@
 import OpenAI from "openai";
 import { env } from "@/lib/env.mjs";
+import {
+  similaritySearch,
+  SimilaritySearchResult,
+} from "@/lib/db/openai/selector";
 
 // 定义返回类型
 export interface EmbeddingResult {
@@ -47,5 +51,31 @@ export async function generateEmbeddings(
     })
   );
 
+  return results;
+}
+
+// 生成单个 embedding
+export async function generateSingleEmbedding(text: string): Promise<number[]> {
+  const openai = new OpenAI({
+    apiKey: env.AI_KEY,
+    baseURL: env.AI_BASE_URL,
+  });
+  const embedding = await openai.embeddings.create({
+    model: env.EMBEDDING,
+    input: text,
+  });
+  return embedding.data[0].embedding;
+}
+
+// 检索召回
+export async function retrieveRecall(
+  text: string,
+  threshold: number = 0.7,
+  limit: number = 5
+): Promise<SimilaritySearchResult[]> {
+  // 生成单个 embedding
+  const embedding = await generateSingleEmbedding(text);
+  // 相似度搜索
+  const results = await similaritySearch(embedding, threshold, limit);
   return results;
 }
