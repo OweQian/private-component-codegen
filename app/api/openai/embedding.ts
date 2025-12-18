@@ -70,7 +70,7 @@ export async function generateSingleEmbedding(text: string): Promise<number[]> {
 // 检索召回
 export async function retrieveRecall(
   text: string,
-  threshold: number = 0.7,
+  threshold: number = 0.5,
   limit: number = 5
 ): Promise<SimilaritySearchResult[]> {
   // 生成单个 embedding

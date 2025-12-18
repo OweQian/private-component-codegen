@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     let referenceContent = "";
     if (lastUserMessageText) {
       try {
-        const searchResults = await retrieveRecall(lastUserMessageText, 0.7, 5);
+        const searchResults = await retrieveRecall(lastUserMessageText, 0.5, 5);
         if (searchResults && searchResults.length > 0) {
           // 将检索到的相关内容合并
           referenceContent = searchResults
