@@ -1,5 +1,5 @@
 {
-  "id": "05551781-ad7e-482c-bc0a-7b8d1164e3d5",
+  "id": "9bae59fd-6d8f-45d0-8c6c-a31f9987f92e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -30,6 +30,51 @@
       "indexes": {
         "openai_embedding_index": {
           "name": "openai_embedding_index",
+          "columns": [
+            {
+              "expression": "embedding",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last",
+              "opclass": "vector_cosine_ops"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "hnsw",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.vercel_ai_embeddings": {
+      "name": "vercel_ai_embeddings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "varchar(191)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "vercelai_embedding_index": {
+          "name": "vercelai_embedding_index",
           "columns": [
             {
               "expression": "embedding",
