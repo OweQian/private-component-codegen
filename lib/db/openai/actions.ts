@@ -7,6 +7,9 @@ export const createResource = async (
   embeddings: Array<{ embedding: number[]; content: string }>
 ) => {
   try {
+    /**
+     * 插入嵌入向量
+     */
     await db.insert(embeddingsTable).values(
       embeddings.map((embedding) => ({
         ...embedding,
