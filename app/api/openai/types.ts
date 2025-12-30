@@ -1,5 +1,5 @@
-import { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 
 export type OpenAIRequest = {
-  message: ChatCompletionMessageParam[];
+  messages: ChatCompletionMessageParam[];
 };

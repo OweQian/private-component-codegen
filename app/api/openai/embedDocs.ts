@@ -1,31 +1,21 @@
-import { saveEmbeddings } from "@/lib/db/openai/actions";
-import { generateEmbeddings } from "./embedding";
 import fs from "fs";
-import path from "path";
+import { env } from "@/lib/env.mjs";
+import { createResource } from "@/lib/db/openai/actions";
+import { generateEmbeddings } from "./embedding";
 
-/**
- * 将文档嵌入到数据库中
- */
-export async function embedDocs() {
-  // 读取文档
-  const docs = fs.readFileSync(
-    path.join(process.cwd(), "ai-docs", "basic-components.txt"),
-    "utf-8"
-  );
-  // 生成 embeddings
+console.log("env.EMBEDDING", env.EMBEDDING);
+
+export const generateEmbeddingsFromDocs = async () => {
+  console.log("start reading docs");
+  const docs = fs.readFileSync("./ai-docs/basic-components.txt", "utf8");
+
+  console.log("start generating embeddings");
   const embeddings = await generateEmbeddings(docs);
 
-  // 保存 embeddings
-  await saveEmbeddings(
-    embeddings.map(({ content, embedding }) => ({
-      content,
-      embedding,
-    }))
-  );
+  console.log("start creating resource");
+  await createResource(embeddings);
 
-  console.log(`Embeddings saved: ${embeddings.length}`);
+  console.log("success~~~");
+};
 
-  return embeddings;
-}
-
-embedDocs();
+generateEmbeddingsFromDocs();

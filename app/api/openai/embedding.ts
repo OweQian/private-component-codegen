@@ -1,81 +1,51 @@
-import OpenAI from "openai";
 import { env } from "@/lib/env.mjs";
-import {
-  similaritySearch,
-  SimilaritySearchResult,
-} from "@/lib/db/openai/selector";
+import OpenAI from "openai";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { findSimilarContent } from "@/lib/db/openai/selectors";
 
-// 定义返回类型
-export interface EmbeddingResult {
-  content: string;
-  embedding: number[];
-}
+const embeddingAI = new OpenAI({
+  apiKey: env.AI_KEY,
+  baseURL: env.AI_BASE_URL,
+  ...(env.HTTP_AGENT ? { httpAgent: new HttpsProxyAgent(env.HTTP_AGENT) } : {}),
+});
 
-/**
- * 将输入的文本字符串转换为向量嵌入（embeddings）
- * @param text 输入的文本字符串
- * @param separator 分隔符，默认为 '-------split line-------'
- * @returns 包含原文本和向量的结果数组
- */
-export async function generateEmbeddings(
-  text: string,
-  separator: string = "-------split line-------"
-): Promise<EmbeddingResult[]> {
-  // 初始化 OpenAI 客户端
-  const openai = new OpenAI({
-    apiKey: env.AI_KEY,
-    baseURL: env.AI_BASE_URL,
-  });
+const generateChunks = (input: string): string[] => {
+  return input.split("-------split line-------");
+};
 
-  // 按分隔符分割文本
-  const textChunks = text
-    .split(separator)
-    .filter((chunk) => chunk.trim().length > 0);
+export const generateEmbeddings = async (
+  value: string
+): Promise<Array<{ embedding: number[]; content: string }>> => {
+  const chunks = generateChunks(value);
 
-  // 如果没有文本块，返回空数组
-  if (textChunks.length === 0) {
-    return [];
-  }
-
-  // 批量生成 embeddings
-  const embeddingsResponse = await openai.embeddings.create({
-    model: env.EMBEDDING,
-    input: textChunks,
-  });
-
-  // 组合原文本和对应的 embedding 向量
-  const results: EmbeddingResult[] = embeddingsResponse.data.map(
-    (item, index) => ({
-      content: textChunks[index],
-      embedding: item.embedding,
+  const embeddings = await Promise.all(
+    chunks.map(async (chunk) => {
+      const response = await embeddingAI.embeddings.create({
+        model: env.EMBEDDING,
+        input: chunk,
+      });
+      return {
+        content: chunk,
+        embedding: response.data[0].embedding,
+      };
     })
   );
 
-  return results;
-}
+  return embeddings;
+};
 
-// 生成单个 embedding
-export async function generateSingleEmbedding(text: string): Promise<number[]> {
-  const openai = new OpenAI({
-    apiKey: env.AI_KEY,
-    baseURL: env.AI_BASE_URL,
-  });
-  const embedding = await openai.embeddings.create({
+export const generateEmbedding = async (value: string): Promise<number[]> => {
+  const input = value.replaceAll("\\n", " ");
+  const response = await embeddingAI.embeddings.create({
     model: env.EMBEDDING,
-    input: text,
+    input,
   });
-  return embedding.data[0].embedding;
-}
+  return response.data[0].embedding;
+};
 
-// 检索召回
-export async function retrieveRecall(
-  text: string,
-  threshold: number = 0.5,
-  limit: number = 5
-): Promise<SimilaritySearchResult[]> {
-  // 生成单个 embedding
-  const embedding = await generateSingleEmbedding(text);
-  // 相似度搜索
-  const results = await similaritySearch(embedding, threshold, limit);
-  return results;
-}
+export const findRelevantContent = async (
+  userQuery: string
+): Promise<{ content: string; similarity: number }[]> => {
+  const userQueryEmbedded = await generateEmbedding(userQuery);
+  return findSimilarContent(userQueryEmbedded);
+};

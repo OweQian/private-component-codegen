@@ -1,7 +1,6 @@
-import { index, pgTable, text, varchar, vector } from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
+import { index, pgTable, text, varchar, vector } from "drizzle-orm/pg-core";
 
-// Define the OpenAI embeddings table
 export const openAiEmbeddings = pgTable(
   "open_ai_embeddings",
   {
@@ -11,10 +10,10 @@ export const openAiEmbeddings = pgTable(
     content: text("content").notNull(),
     embedding: vector("embedding", { dimensions: 1536 }).notNull(),
   },
-  (t) => ({
-    openaiEmbeddingIndex: index("openai_embedding_index").using(
+  (table) => ({
+    openAiEmbeddingIndex: index("open_ai_embedding_index").using(
       "hnsw",
-      t.embedding.op("vector_cosine_ops")
+      table.embedding.op("vector_cosine_ops")
     ),
   })
 );

@@ -1,5 +1,5 @@
 {
-  "id": "9bae59fd-6d8f-45d0-8c6c-a31f9987f92e",
+  "id": "4805698c-5edb-4e7c-9bd5-0a178ca6672e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -28,8 +28,8 @@
         }
       },
       "indexes": {
-        "openai_embedding_index": {
-          "name": "openai_embedding_index",
+        "open_ai_embedding_index": {
+          "name": "open_ai_embedding_index",
           "columns": [
             {
               "expression": "embedding",

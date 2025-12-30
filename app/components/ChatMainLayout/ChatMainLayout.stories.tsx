@@ -1,31 +1,29 @@
-import type { Meta, StoryObj } from '@storybook/react';
-import ChatMainLayout from './ChatMainLayout';
+import type { Meta, StoryObj } from "@storybook/react";
+import ChatMainLayout from "./ChatMainLayout";
 
 const meta = {
-  title: 'Components/ChatMainLayout',
+  title: "Components/ChatMainLayout",
   component: ChatMainLayout,
   parameters: {
-    layout: 'fullscreen'
-  }
+    layout: "fullscreen",
+  },
 } satisfies Meta<typeof ChatMainLayout>;
 
 export default meta;
 type Story = StoryObj<typeof ChatMainLayout>;
 
 const modelItems = [
-  { label: 'OpenAI SDK', key: 'openai-sdk' },
-  { label: 'LangChain', key: 'langchain' },
-  { label: 'LLamaIndex', key: 'llamaindex' },
-  { label: 'Vercel AI SDK', key: 'vercel-ai-sdk' }
+  { label: "OpenAI SDK", key: "openai-sdk" },
+  { label: "Vercel AI SDK", key: "vercel-ai-sdk" },
 ];
 
 export const Default: Story = {
   args: {
     mainContent: <div>Main Content</div>,
-    selectedModel: 'openai-sdk',
-    onModelChange: (model) => console.log('Model changed to:', model),
-    modelItems: modelItems
-  }
+    selectedModel: "openai-sdk",
+    onModelChange: (model) => console.log("Model changed to:", model),
+    modelItems: modelItems,
+  },
 };
 
 export const WithLongContent: Story = {
@@ -39,8 +37,8 @@ export const WithLongContent: Story = {
           ))}
       </div>
     ),
-    selectedModel: 'langchain',
-    onModelChange: (model) => console.log('Model changed to:', model),
-    modelItems: modelItems
-  }
+    selectedModel: "langchain",
+    onModelChange: (model) => console.log("Model changed to:", model),
+    modelItems: modelItems,
+  },
 };
