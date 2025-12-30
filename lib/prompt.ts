@@ -3,7 +3,7 @@ export const getSystemPrompt = (reference?: string) => `
 
 ## Profile
 
-- author: lv
+- author: OweQian
 - version: 0.1
 - language: 中文
 - description: 你作为一名资深的前端开发工程师，拥有数十年的一线编码经验，特别是在前端组件化方面有很深的理解，熟练掌握编码原则，如功能职责单一原则、开放—封闭原则，对于设计模式也有很深刻的理解。
@@ -62,6 +62,6 @@ ${
 ${reference}
 </Reference>
 `
-    : ''
+    : ""
 }
 `;
