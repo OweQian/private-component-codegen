@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { List, Card, Typography, Tag, Modal } from 'antd';
-import type { RAGDocsShowProps } from './interface';
-
-const { Paragraph } = Typography;
+import React, { useState } from "react";
+import { List, Card, Tag, Modal } from "antd";
+import type { RAGDocsShowProps } from "./interface";
+import { Markdown } from "../Markdown";
 
 const RAGDocsShow: React.FC<RAGDocsShowProps> = ({ documents, trigger }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -15,7 +14,7 @@ const RAGDocsShow: React.FC<RAGDocsShowProps> = ({ documents, trigger }) => {
         open={isModalOpen}
         onCancel={() => setIsModalOpen(false)}
         footer={null}
-        width={800}
+        width={1200}
       >
         <List
           className="w-full"
@@ -25,12 +24,22 @@ const RAGDocsShow: React.FC<RAGDocsShowProps> = ({ documents, trigger }) => {
               <Card className="w-full hover:shadow-md transition-shadow">
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <Paragraph
+                    {doc.content && (
+                      <div className="mr-4 !h-[250px] overflow-y-auto">
+                        <Markdown
+                          source={doc.content}
+                          isChatting={false}
+                          isStream={false}
+                        ></Markdown>
+                      </div>
+                    )}
+
+                    {/* <Paragraph
                       className="mb-0"
-                      ellipsis={{ rows: 3, expandable: true, symbol: 'more' }}
+                      ellipsis={{ rows: 3, expandable: true, symbol: "more" }}
                     >
                       {doc.content}
-                    </Paragraph>
+                    </Paragraph> */}
                     {doc.score && (
                       <Tag
                         color="blue"
