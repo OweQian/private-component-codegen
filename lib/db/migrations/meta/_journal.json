@@ -8,6 +8,13 @@
       "when": 1767081204956,
       "tag": "0000_outgoing_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767774952027,
+      "tag": "0001_amazing_the_professor",
+      "breakpoints": true
     }
   ]
 }
