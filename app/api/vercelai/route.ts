@@ -1,117 +1,118 @@
-import { NextRequest } from "next/server";
-import { streamText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
-import { env } from "@/lib/env.mjs";
-import { retrieveRecall } from "./embedding";
-import { getSystemPrompt } from "@/lib/prompt";
+import { CoreMessage, createDataStreamResponse, streamText } from "ai";
 import { OpenAIRequest } from "./types";
-
-// 创建配置了自定义 baseURL 的 OpenAI 客户端
-const openai = createOpenAI({
-  apiKey: env.AI_KEY,
-  baseURL: env.AI_BASE_URL,
-});
+import { findRelevantContent } from "./embedding";
+import { getSystemPrompt } from "@/lib/prompt";
+import { env } from "@/lib/env.mjs";
+import { ChatCompletionMessageParam } from "openai/resources/chat/completions.mjs";
+import { model } from "./settings";
 
 /**
- * POST 处理函数：处理流式 AI 对话请求
+ * 将 OpenAI 格式的消息转换为 AI SDK 的 CoreMessage 格式
+ * 主要处理图片内容的格式转换，将 image_url 类型转换为 image 类型，并移除 base64 前缀
+ *
+ * @param messages - OpenAI 格式的消息数组
+ * @returns 转换后的 CoreMessage 数组
  */
-export async function POST(request: NextRequest) {
-  try {
-    // 解析请求体
-    const body: OpenAIRequest = await request.json();
-    const { messages } = body;
-
-    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: "消息数组不能为空" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    // 获取最后一条用户消息用于向量检索
-    const lastMessage = messages[messages.length - 1];
-    let lastUserMessageText: string | null = null;
-
-    // 提取最后一条用户消息的文本内容
-    if (lastMessage.role === "user" && lastMessage.content) {
-      if (typeof lastMessage.content === "string") {
-        lastUserMessageText = lastMessage.content;
-      } else if (Array.isArray(lastMessage.content)) {
-        // 如果是数组类型（多模态），提取所有文本部分
-        const textParts = lastMessage.content
-          .filter((part) => part.type === "text")
-          .map((part) => (part as { text: string }).text)
-          .join(" ");
-        if (textParts) {
-          lastUserMessageText = textParts;
-        }
-      }
-    }
-
-    // 如果最后一条消息是用户消息，进行向量检索
-    let referenceContent = "";
-    if (lastUserMessageText) {
-      try {
-        const searchResults = await retrieveRecall(lastUserMessageText, 0.5, 5);
-        if (searchResults && searchResults.length > 0) {
-          // 将检索到的相关内容合并
-          referenceContent = searchResults
-            .map((result) => result.content)
-            .join("\n\n");
-        }
-      } catch (error) {
-        console.error("向量检索失败:", error);
-        // 检索失败不影响主流程，继续执行
-      }
-    }
-
-    // 构建系统提示词，整合相关内容
-    const systemPrompt = getSystemPrompt(referenceContent || undefined);
-
-    // 构建完整的消息列表，包含系统提示词
-    const messagesWithSystem = [
-      {
-        role: "system" as const,
-        content: systemPrompt,
-      },
-      ...messages,
-    ];
-
-    // 使用 streamText 创建流式响应
-    const result = await streamText({
-      model: openai(env.MODEL),
-      messages: messagesWithSystem,
-      temperature: 0.7,
-    });
-
-    // 如果存在 RAG 文档，通过响应头传递
-    const headers: Record<string, string> = {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no", // 禁用 Nginx 缓冲
+export const formatMessages = (messages: ChatCompletionMessageParam[]) => {
+  return messages.map((message) => {
+    return {
+      ...message,
+      role: message.role,
+      // 处理消息内容：如果是数组格式（可能包含文本和图片），需要特殊处理
+      content: Array.isArray(message.content)
+        ? message.content.map((content) => {
+            // 如果是图片 URL 类型，转换为 AI SDK 需要的格式
+            if (content.type === "image_url") {
+              return {
+                type: "image",
+                // 移除 base64 数据 URL 的前缀（data:image/xxx;base64,），只保留 base64 编码的图片数据
+                image: content.image_url.url.replace(
+                  /^data:image\/\w+;base64,/,
+                  ""
+                ),
+              };
+            }
+            // 其他类型的内容直接返回
+            return {
+              ...content,
+            };
+          })
+        : message.content,
     };
+  }) as CoreMessage[];
+};
 
-    if (referenceContent) {
-      // 将 RAG 文档内容通过响应头传递（使用 base64 编码避免特殊字符问题）
-      headers["X-RAG-Content"] =
-        Buffer.from(referenceContent).toString("base64");
-    }
+// 根据环境变量中的模型名称创建模型实例
+const openaiModel = model(env.MODEL);
 
-    // 返回标准的 AI SDK 流式响应
-    return result.toDataStreamResponse({
-      headers,
+/**
+ * 处理聊天完成的 POST 请求
+ * 实现 RAG（检索增强生成）功能：根据用户消息检索相关内容，然后生成回答
+ *
+ * @param req - HTTP 请求对象
+ * @returns 数据流响应，包含流式文本输出和相关内容注释
+ */
+export async function POST(req: Request) {
+  try {
+    // 解析请求体，获取消息列表
+    const request: OpenAIRequest = await req.json();
+    const { messages } = request;
+
+    // 获取最后一条用户消息（用于检索相关内容）
+    const lastMessage = messages[messages.length - 1];
+    // 提取最后一条消息的文本内容
+    // 如果内容是数组格式（可能包含多种类型），只提取文本类型的内容
+    const lastMessageContent = Array.isArray(lastMessage.content)
+      ? lastMessage.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("")
+      : (lastMessage.content as string);
+
+    // 使用向量检索查找与用户消息相关的内容（RAG 检索步骤）
+    const relevantContent = await findRelevantContent(lastMessageContent);
+
+    // 根据检索到的相关内容生成系统提示词
+    // 系统提示词会包含检索到的参考内容，帮助模型更好地回答用户问题
+    const system = getSystemPrompt(
+      relevantContent.map((c) => c.content).join("\n")
+    );
+
+    // 创建数据流响应，支持流式输出
+    return createDataStreamResponse({
+      execute: async (dataStream) => {
+        // 将检索到的相关内容作为消息注释写入数据流
+        // 前端可以通过这些注释显示相关的参考文档
+        dataStream.writeMessageAnnotation({
+          relevantContent,
+        });
+
+        // 使用 AI SDK 的 streamText 生成流式文本响应
+        const result = streamText({
+          model: openaiModel, // 使用的 AI 模型
+          system, // 系统提示词（包含检索到的相关内容）
+          messages: formatMessages(messages), // 格式化后的消息列表
+        });
+
+        // 将文本流合并到数据流中，实现流式输出
+        result.mergeIntoDataStream(dataStream);
+      },
+      // 错误处理回调
+      onError: (error) => {
+        console.error("Error in chat completion:", error);
+        return error instanceof Error
+          ? error.message
+          : "An unknown error occurred";
+      },
     });
-  } catch (error) {
-    console.error("API 路由错误:", error);
+  } catch (error: unknown) {
+    // 捕获并处理请求处理过程中的错误
+    console.error("Error in chat completion:", error);
     return new Response(
-      JSON.stringify({
-        error: "处理请求时发生错误",
-        message: error instanceof Error ? error.message : String(error),
-      }),
+      error instanceof Error ? error.message : "An unknown error occurred",
       {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
+        status: 400,
+        statusText: "Bad Request",
       }
     );
   }

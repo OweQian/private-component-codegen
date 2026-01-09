@@ -1,199 +1,117 @@
 "use client";
 
-import { useChat } from "ai/react";
-import { useCallback, useState, useMemo, useRef } from "react";
-import { ChatMessages } from "../components/ChatMessages";
-import { Message } from "../components/ChatMessages/interface";
+/**
+ * Vercel AI SDK 聊天界面组件
+ *
+ * 使用 Vercel AI SDK 的 useChat hook 实现聊天功能，支持文本和图片输入
+ * 集成了 RAG（检索增强生成）功能，可以显示相关文档内容
+ */
+
+// Vercel AI SDK 提供的类型和 hook
+import { Message, useChat } from "ai/react";
+// 生成唯一 ID 的工具库
+import { nanoid } from "nanoid";
+// 聊天消息展示组件
+import ChatMessages from "../components/ChatMessages/ChatMessages";
+// React hooks
+import { useState } from "react";
+// RAG 文档类型定义
 import { RAGDocument } from "../components/RAGDocsShow/interface";
-import { CoreMessage } from "ai";
 
+/**
+ * 主页面组件
+ * 负责管理聊天状态、处理用户输入、发送消息到后端 API
+ */
 const Home = () => {
-  const [messageImgUrl, setMessageImgUrl] = useState("");
-  const [ragDocsMap, setRagDocsMap] = useState<Map<string, RAGDocument[]>>(
-    new Map()
-  );
-  const pendingRagDocsRef = useRef<RAGDocument[] | null>(null);
-
-  // 使用 useChat hook 完整功能
+  // 使用 Vercel AI SDK 的 useChat hook 管理聊天状态
   const {
-    messages: chatMessages,
-    input,
-    handleInputChange,
-    isLoading,
-    setMessages: setChatMessages,
-    append,
+    messages, // 当前所有消息列表
+    input, // 输入框的当前值
+    handleInputChange, // 处理输入框变化的函数
+    setMessages, // 手动设置消息列表的函数
+    isLoading, // 是否正在加载（等待 AI 响应）
+    reload: handleRetry, // 重试最后一条消息的函数（重命名为 handleRetry）
+    append, // 追加新消息到消息列表的函数
   } = useChat({
+    // 后端 API 路由地址
     api: "/api/vercelai",
-    // 处理响应，用于提取 RAG 文档
-    async onResponse(response) {
-      // 从响应头读取 RAG 文档内容
-      const ragContentHeader = response.headers.get("X-RAG-Content");
-      if (ragContentHeader) {
-        try {
-          // 在浏览器中使用 atob 解码 base64
-          const referenceText = atob(ragContentHeader);
-          if (referenceText) {
-            const docParts = referenceText
-              .split("\n\n")
-              .filter((part: string) => part.trim());
-            const ragDocs: RAGDocument[] = docParts.map(
-              (part: string, index: number) => ({
-                id: `rag-${Date.now()}-${index}`,
-                content: part.trim(),
-              })
-            );
-            // 保存到 ref，等待消息完成时关联
-            pendingRagDocsRef.current = ragDocs;
-          }
-        } catch (error) {
-          console.error("解析 RAG 文档失败:", error);
-        }
-      }
+    // 错误处理回调函数
+    onError: (error) => {
+      console.error(error);
+      // 如果最后一条消息是用户消息，则去掉最后一条消息
+      // 这样可以在出错时回退到错误发生前的状态
+      setMessages((messages) =>
+        messages.length > 0 && messages[messages.length - 1].role === "user"
+          ? messages.slice(0, -1)
+          : messages
+      );
     },
-    // 当消息流完成时，将 RAG 文档关联到消息
-    onFinish: (message) => {
-      if (message.role === "assistant" && pendingRagDocsRef.current) {
-        setRagDocsMap((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(message.id, pendingRagDocsRef.current!);
-          return newMap;
-        });
-        pendingRagDocsRef.current = null;
-      }
-    },
+    // 实验性功能：节流时间（毫秒），用于控制流式输出的更新频率
+    experimental_throttle: 100,
   });
 
-  // 将 useChat 的消息格式转换为组件需要的 Message 格式
-  const messages: Message[] = useMemo(() => {
-    return chatMessages
-      .filter((msg) => msg.role === "user" || msg.role === "assistant")
-      .map((msg) => {
-        // 转换内容格式 - useChat 返回的 content 通常是字符串
-        const content: string | Message["content"] =
-          typeof msg.content === "string"
-            ? msg.content
-            : Array.isArray(msg.content)
-            ? (msg.content as any[]).map((part: any) => {
-                if (part.type === "text") {
-                  return { type: "text" as const, text: part.text || "" };
-                } else if (part.type === "image" || part.type === "image_url") {
-                  return {
-                    type: "image_url" as const,
-                    image_url: {
-                      url:
-                        part.image ||
-                        part.imageUrl ||
-                        part.image_url?.url ||
-                        "",
-                    },
-                  };
-                }
-                return { type: "text" as const, text: "" };
-              })
-            : String(msg.content || "");
+  // 用于存储用户上传的图片 URL
+  // 当用户上传图片时，会与文本一起发送给 AI
+  const [messageImgUrl, setMessageImgUrl] = useState("");
 
-        const message: Message = {
-          id: msg.id,
-          role: msg.role as "user" | "assistant",
-          content,
-        };
+  /**
+   * 处理表单提交
+   * 创建新的用户消息并发送给后端 API
+   * 支持纯文本消息和带图片的消息
+   */
+  const handleSubmit = async () => {
+    // 构建新的用户消息对象
+    const newUserMessage = {
+      id: nanoid(), // 生成唯一 ID
+      role: "user", // 消息角色为用户
+      // 如果有图片，则构建包含图片和文本的内容数组
+      // 如果没有图片，则直接使用文本内容
+      content: messageImgUrl
+        ? [
+            { type: "image_url", image_url: { url: messageImgUrl } },
+            { type: "text", text: input },
+          ]
+        : input,
+    };
 
-        // 添加 RAG 文档
-        const ragDocs = ragDocsMap.get(msg.id);
-        if (ragDocs) {
-          message.ragDocs = ragDocs;
-        }
+    // 将新消息追加到消息列表，触发 API 调用
+    append(newUserMessage as Message);
 
-        return message;
-      });
-  }, [chatMessages, ragDocsMap]);
+    // 清空输入框
+    handleInputChange({
+      target: { value: "" },
+    } as React.ChangeEvent<HTMLInputElement>);
 
-  // 处理提交，支持图片上传
-  const handleSubmit = useCallback(
-    async (e: React.FormEvent<HTMLFormElement>) => {
-      e.preventDefault();
-      if (!input.trim() && !messageImgUrl) return;
-      if (isLoading) return;
-
-      // 构建消息内容
-      let content: CoreMessage["content"] = input.trim();
-
-      if (messageImgUrl) {
-        // 如果有图片，构建多模态消息
-        const contentParts: Array<{
-          type: "text" | "image_url";
-          text?: string;
-          imageUrl?: string;
-        }> = [];
-        if (input.trim()) {
-          contentParts.push({ type: "text", text: input.trim() });
-        }
-        contentParts.push({
-          type: "image_url",
-          imageUrl: messageImgUrl,
-        });
-        content = contentParts as any;
-      }
-
-      // 清空输入和图片
-      setMessageImgUrl("");
-
-      // 重置 pending RAG 文档
-      pendingRagDocsRef.current = null;
-
-      // 使用 useChat 的 append 方法发送消息
-      await append({
-        role: "user",
-        content: content as any,
-      });
-    },
-    [input, messageImgUrl, isLoading, append]
-  );
-
-  // 处理重试
-  const handleRetry = useCallback(
-    async (messageId: string) => {
-      // 找到要重试的消息
-      const retryIndex = chatMessages.findIndex((msg) => msg.id === messageId);
-      if (retryIndex === -1) return;
-
-      // 找到该消息之前的最后一条用户消息
-      let lastUserMessageIndex = -1;
-      for (let i = retryIndex - 1; i >= 0; i--) {
-        if (chatMessages[i].role === "user") {
-          lastUserMessageIndex = i;
-          break;
-        }
-      }
-
-      if (lastUserMessageIndex === -1) return;
-
-      // 移除从最后一条用户消息之后的所有消息（包括要重试的消息）
-      const messagesToRetry = chatMessages.slice(0, lastUserMessageIndex + 1);
-      setChatMessages(messagesToRetry);
-
-      // 重新发送最后一条用户消息
-      const lastUserMessage = messagesToRetry[messagesToRetry.length - 1];
-      if (lastUserMessage && lastUserMessage.role === "user") {
-        await append({
-          role: "user",
-          content: lastUserMessage.content,
-        });
-      }
-    },
-    [chatMessages, setChatMessages, append]
-  );
+    // 清空图片 URL
+    setMessageImgUrl("");
+  };
 
   return (
     <ChatMessages
-      messages={messages}
+      // 将消息列表转换为组件所需的格式
+      messages={messages.map((msg: Message) => ({
+        id: msg.id,
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+        // 从消息的 annotations 中提取 RAG 相关文档
+        // annotations 是 Vercel AI SDK 提供的扩展字段，用于存储额外信息
+        ragDocs:
+          Array.isArray(msg.annotations) && msg.annotations[0]
+            ? (
+                msg.annotations[0] as unknown as {
+                  relevantContent: RAGDocument[];
+                }
+              ).relevantContent
+            : undefined,
+      }))}
       input={input}
       handleInputChange={handleInputChange}
       onSubmit={handleSubmit}
       isLoading={isLoading}
       messageImgUrl={messageImgUrl}
       setMessagesImgUrl={setMessageImgUrl}
-      onRetry={handleRetry}
+      // 重试函数，用于重新发送失败的消息
+      onRetry={handleRetry as (id: string) => void}
     />
   );
 };
